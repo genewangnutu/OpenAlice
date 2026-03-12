@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { Section } from '../components/form'
 import { PageHeader } from '../components/PageHeader'
 import { Spinner, EmptyState } from '../components/StateViews'
+import { useToast } from '../components/Toast'
 import {
   devApi,
   type RegistryResponse,
-  type SendResponse,
   type SessionInfo,
 } from '../api/dev'
 
@@ -100,8 +100,7 @@ function SendSection() {
   const [text, setText] = useState('')
   const [source, setSource] = useState<'manual' | 'heartbeat' | 'cron'>('manual')
   const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<SendResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     devApi.registry().then((r) => {
@@ -112,8 +111,6 @@ function SendSection() {
   const handleSend = useCallback(async () => {
     if (!text.trim()) return
     setSending(true)
-    setResult(null)
-    setError(null)
     try {
       const res = await devApi.send({
         channel: channel || undefined,
@@ -121,13 +118,13 @@ function SendSection() {
         text: text.trim(),
         source,
       })
-      setResult(res)
+      toast.success(`Sent to ${res.channel}:${res.to}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      toast.error(err instanceof Error ? err.message : String(err))
     } finally {
       setSending(false)
     }
-  }, [channel, kind, text, source])
+  }, [channel, kind, text, source, toast])
 
   const selectClass = 'px-2.5 py-2 bg-bg text-text border border-border rounded-md text-sm outline-none focus:border-accent'
 
@@ -192,16 +189,6 @@ function SendSection() {
           {sending ? 'Sending...' : 'Send'}
         </button>
 
-        {result && (
-          <pre className="p-2.5 bg-bg-tertiary rounded-md text-xs text-green font-mono overflow-x-auto">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        )}
-        {error && (
-          <pre className="p-2.5 bg-bg-tertiary rounded-md text-xs text-red font-mono overflow-x-auto">
-            {error}
-          </pre>
-        )}
       </div>
     </Section>
   )

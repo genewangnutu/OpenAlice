@@ -53,15 +53,21 @@ export function ChatInput({ disabled, onSend }: ChatInputProps) {
           onClick={handleSend}
           disabled={disabled || !hasText}
           className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 shrink-0 mb-0.5 ${
-            hasText && !disabled
-              ? 'bg-accent text-white shadow-sm hover:bg-accent/85 scale-100'
-              : 'bg-bg-tertiary text-text-muted/40 cursor-not-allowed scale-95'
+            disabled
+              ? 'bg-accent/60 text-white cursor-not-allowed'
+              : hasText
+                ? 'bg-accent text-white shadow-sm hover:bg-accent/85 scale-100'
+                : 'bg-bg-tertiary text-text-muted/40 cursor-not-allowed scale-95'
           }`}
           aria-label="Send message"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
+          {disabled ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          )}
         </button>
       </div>
       <div className="text-center mt-1.5 max-w-[800px] mx-auto">

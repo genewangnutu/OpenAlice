@@ -174,12 +174,12 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
   return (
     <>
       {/* Backdrop — mobile only */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={onClose}
-        />
-      )}
+      <div
+        className={`fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity duration-200 ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={onClose}
+      />
 
       {/* Sidebar */}
       <aside

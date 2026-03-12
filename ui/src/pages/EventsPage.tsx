@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { api, type EventLogEntry, type CronJob, type CronSchedule } from '../api'
 import { useSSE } from '../hooks/useSSE'
 import { Toggle } from '../components/Toggle'
+import { PageHeader } from '../components/PageHeader'
 
 // ==================== Helpers ====================
 
@@ -554,32 +555,33 @@ export function EventsPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Page header */}
-      <div className="flex items-center gap-4 px-4 md:px-6 py-4 border-b border-border shrink-0">
-        <h2 className="text-base font-semibold text-text">Events</h2>
-        <div className="flex gap-1 bg-bg-secondary rounded-lg p-1">
-          <button
-            onClick={() => setTab('events')}
-            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-              tab === 'events'
-                ? 'bg-bg-tertiary text-text'
-                : 'text-text-muted hover:text-text'
-            }`}
-          >
-            Event Log
-          </button>
-          <button
-            onClick={() => setTab('cron')}
-            className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
-              tab === 'cron'
-                ? 'bg-bg-tertiary text-text'
-                : 'text-text-muted hover:text-text'
-            }`}
-          >
-            Cron Jobs
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Events"
+        right={
+          <div className="flex gap-1 bg-bg-secondary rounded-lg p-1">
+            <button
+              onClick={() => setTab('events')}
+              className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+                tab === 'events'
+                  ? 'bg-bg-tertiary text-text'
+                  : 'text-text-muted hover:text-text'
+              }`}
+            >
+              Event Log
+            </button>
+            <button
+              onClick={() => setTab('cron')}
+              className={`px-4 py-1.5 text-sm rounded-md transition-colors ${
+                tab === 'cron'
+                  ? 'bg-bg-tertiary text-text'
+                  : 'text-text-muted hover:text-text'
+              }`}
+            >
+              Cron Jobs
+            </button>
+          </div>
+        }
+      />
 
       {/* Content area */}
       <div className="flex-1 flex flex-col min-h-0 px-4 md:px-6 py-5">

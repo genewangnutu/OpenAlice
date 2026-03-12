@@ -240,7 +240,7 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
 
             {/* Popover dropdown */}
             {popoverOpen && (
-              <div className="absolute top-9 right-0 w-56 rounded-lg border border-border bg-bg shadow-xl py-1 animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="absolute top-9 right-0 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-bg shadow-xl py-1 animate-in fade-in slide-in-from-top-1 duration-150">
                 {subChannels.map((ch) => (
                   <button
                     key={ch.id}
