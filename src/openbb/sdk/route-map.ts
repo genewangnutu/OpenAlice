@@ -8,7 +8,7 @@
  * to call for each API path, providing a drop-in replacement for HTTP routing.
  */
 
-import { loadAllRouters } from 'opentypebb'
+import { loadAllRouters } from '@traderalice/opentypebb'
 
 let _routeMap: Map<string, string> | null = null
 

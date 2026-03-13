@@ -1,5 +1,5 @@
 {
-  "name": "opentypebb",
+  "name": "@traderalice/opentypebb",
   "version": "0.1.0",
   "description": "TypeScript port of OpenBB Platform — financial data infrastructure",
   "type": "module",
@@ -11,6 +11,27 @@
     "./server": {
       "import": "./src/server.ts",
       "types": "./src/server.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TraderAlice/OpenAlice.git",
+    "directory": "packages/opentypebb"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./server": {
+        "import": "./dist/server.js",
+        "types": "./dist/server.d.ts"
+      }
     }
   },
   "scripts": {

@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -63,3 +64,57 @@ jobs:
           body_path: notes.md
           prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
           generate_release_notes: false
+
+  publish-opentypebb:
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.result == 'success'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          cache: pnpm
+
+      - name: Check if version already published
+        id: check
+        working-directory: packages/opentypebb
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "@traderalice/opentypebb@$VERSION" version --registry=https://npm.pkg.github.com 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/opentypebb
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Publish to GitHub Packages
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/opentypebb
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npmjs
+        if: steps.check.outputs.exists == 'false'
+        working-directory: packages/opentypebb
+        run: npm publish --registry=https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

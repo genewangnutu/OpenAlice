@@ -11,7 +11,7 @@
  *     → executor.execute('fmp', 'EquityQuote', params, credentials)
  */
 
-import type { QueryExecutor } from 'opentypebb'
+import type { QueryExecutor } from '@traderalice/opentypebb'
 
 export class SDKBaseClient {
   constructor(

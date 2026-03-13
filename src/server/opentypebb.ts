@@ -9,7 +9,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
-import { createExecutor, loadAllRouters } from 'opentypebb'
+import { createExecutor, loadAllRouters } from '@traderalice/opentypebb'
 
 export function startEmbeddedOpenBBServer(port: number): void {
   const executor = createExecutor()

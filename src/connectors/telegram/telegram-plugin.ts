@@ -10,8 +10,9 @@ import { askClaudeCode } from '../../ai-providers/claude-code/index.js'
 import type { ClaudeCodeConfig } from '../../ai-providers/claude-code/index.js'
 import { SessionStore } from '../../core/session'
 import { forceCompact } from '../../core/compaction'
-import { readAIConfig, writeAIConfig, type AIBackend } from '../../core/ai-config'
-import type { ConnectorCenter, Connector } from '../../core/connector-center.js'
+import { readAIBackend, writeAIBackend, type AIBackend } from '../../core/config'
+import type { ConnectorCenter } from '../../core/connector-center.js'
+import type { Connector } from '../types.js'
 
 const MAX_MESSAGE_LENGTH = 4096
 
@@ -82,7 +83,7 @@ export class TelegramPlugin implements Plugin {
 
     // ── Commands ──
     bot.command('status', async (ctx) => {
-      const aiConfig = await readAIConfig()
+      const aiConfig = await readAIBackend()
       await this.sendReply(ctx.chat.id, `Engine is running. Provider: ${BACKEND_LABELS[aiConfig.backend]}`)
     })
 
@@ -106,7 +107,7 @@ export class TelegramPlugin implements Plugin {
       try {
         if (data.startsWith('provider:')) {
           const backend = data.slice('provider:'.length) as AIBackend
-          await writeAIConfig(backend)
+          await writeAIBackend(backend)
           await ctx.answerCallbackQuery({ text: `Switched to ${BACKEND_LABELS[backend]}` })
 
           // Edit the original settings message in-place
@@ -170,7 +171,7 @@ export class TelegramPlugin implements Plugin {
 
     // ── Initialize and get bot info ──
     await bot.init()
-    const aiConfig = await readAIConfig()
+    const aiConfig = await readAIBackend()
     console.log(`telegram plugin: connected as @${bot.botInfo.username} (backend: ${aiConfig.backend})`)
 
     // ── Register connector for outbound delivery (heartbeat / cron responses) ──
@@ -320,7 +321,7 @@ export class TelegramPlugin implements Plugin {
   }
 
   private async sendSettingsMenu(chatId: number) {
-    const aiConfig = await readAIConfig()
+    const aiConfig = await readAIBackend()
     const ccLabel = aiConfig.backend === 'claude-code' ? '> Claude Code' : 'Claude Code'
     const aiLabel = aiConfig.backend === 'vercel-ai-sdk' ? '> Vercel AI SDK' : 'Vercel AI SDK'
     const sdkLabel = aiConfig.backend === 'agent-sdk' ? '> Agent SDK' : 'Agent SDK'

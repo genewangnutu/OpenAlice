@@ -518,6 +518,24 @@ export async function readToolsConfig() {
   }
 }
 
+// ==================== AI Backend Helpers ====================
+
+export type AIBackend = 'claude-code' | 'vercel-ai-sdk' | 'agent-sdk'
+
+/** Read the current AI backend from ai-provider.json. */
+export async function readAIBackend(): Promise<{ backend: AIBackend }> {
+  const config = await readAIProviderConfig()
+  return { backend: config.backend }
+}
+
+/** Switch the AI backend in ai-provider.json (preserves other fields). */
+export async function writeAIBackend(backend: AIBackend): Promise<void> {
+  const current = await readAIProviderConfig()
+  const updated = { ...current, backend }
+  await mkdir(CONFIG_DIR, { recursive: true })
+  await writeFile(resolve(CONFIG_DIR, 'ai-provider.json'), JSON.stringify(updated, null, 2) + '\n')
+}
+
 // ==================== Writer ====================
 
 export type ConfigSection = keyof Config

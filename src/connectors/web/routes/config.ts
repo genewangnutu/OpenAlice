@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
-import { loadConfig, writeConfigSection, readAIProviderConfig, readOpenbbConfig, validSections, type ConfigSection } from '../../../core/config.js'
-import { readAIConfig, writeAIConfig, type AIBackend } from '../../../core/ai-config.js'
+import { loadConfig, writeConfigSection, readAIProviderConfig, readOpenbbConfig, validSections, writeAIBackend, type ConfigSection, type AIBackend } from '../../../core/config.js'
 
 interface ConfigRouteOpts {
   onConnectorsChange?: () => Promise<void>
@@ -26,7 +25,7 @@ export function createConfigRoutes(opts?: ConfigRouteOpts) {
       if (backend !== 'claude-code' && backend !== 'vercel-ai-sdk' && backend !== 'agent-sdk') {
         return c.json({ error: 'Invalid backend. Must be "claude-code", "vercel-ai-sdk", or "agent-sdk".' }, 400)
       }
-      await writeAIConfig(backend as AIBackend)
+      await writeAIBackend(backend as AIBackend)
       return c.json({ backend })
     } catch (err) {
       return c.json({ error: String(err) }, 500)

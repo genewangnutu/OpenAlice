@@ -6,7 +6,7 @@
  * without HTTP overhead.
  */
 
-import { createExecutor, type QueryExecutor } from 'opentypebb'
+import { createExecutor, type QueryExecutor } from '@traderalice/opentypebb'
 
 let _executor: QueryExecutor | null = null
 
