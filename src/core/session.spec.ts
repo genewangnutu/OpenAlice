@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { toModelMessages, toTextHistory, toChatHistory, type SessionEntry, type ContentBlock } from './session.js'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { toModelMessages, toTextHistory, toChatHistory, SessionStore, MemorySessionStore, type SessionEntry, type ContentBlock } from './session.js'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 // ==================== Helpers ====================
 
@@ -304,5 +307,154 @@ describe('toChatHistory', () => {
       makeEntry({ type: 'user', message: { role: 'user', content: '   ' } }),
     ])
     expect(items).toEqual([])
+  })
+})
+
+// ==================== MemorySessionStore ====================
+
+describe('MemorySessionStore', () => {
+  it('should start empty: exists() returns false', async () => {
+    const store = new MemorySessionStore('m1')
+    expect(await store.exists()).toBe(false)
+  })
+
+  it('should return true from exists() after an append', async () => {
+    const store = new MemorySessionStore('m1')
+    await store.appendUser('hello')
+    expect(await store.exists()).toBe(true)
+  })
+
+  it('should persist user message and read it back', async () => {
+    const store = new MemorySessionStore('m1')
+    await store.appendUser('user says hi')
+    const all = await store.readAll()
+    expect(all).toHaveLength(1)
+    expect(all[0].type).toBe('user')
+    expect(all[0].message.content).toBe('user says hi')
+  })
+
+  it('should persist assistant message and read it back', async () => {
+    const store = new MemorySessionStore('m1')
+    await store.appendAssistant('assistant reply')
+    const all = await store.readAll()
+    expect(all).toHaveLength(1)
+    expect(all[0].type).toBe('assistant')
+    expect(all[0].provider).toBe('vercel-ai')
+  })
+
+  it('should chain UUIDs correctly across multiple appends', async () => {
+    const store = new MemorySessionStore('m1')
+    const e1 = await store.appendUser('first')
+    const e2 = await store.appendAssistant('second')
+    const e3 = await store.appendUser('third')
+    expect(e1.parentUuid).toBeNull()
+    expect(e2.parentUuid).toBe(e1.uuid)
+    expect(e3.parentUuid).toBe(e2.uuid)
+  })
+
+  it('should include correct sessionId on all entries', async () => {
+    const store = new MemorySessionStore('session-abc')
+    await store.appendUser('msg')
+    const all = await store.readAll()
+    expect(all[0].sessionId).toBe('session-abc')
+  })
+
+  it('readActive() should return only entries after last compact_boundary', async () => {
+    const store = new MemorySessionStore('m2')
+    await store.appendUser('before boundary')
+    const boundary: SessionEntry = {
+      type: 'system',
+      subtype: 'compact_boundary',
+      message: { role: 'system', content: 'compacted' },
+      uuid: 'b1',
+      parentUuid: null,
+      sessionId: 'm2',
+      timestamp: new Date().toISOString(),
+    }
+    await store.appendRaw(boundary)
+    await store.appendUser('after boundary')
+    const active = await store.readActive()
+    // getActiveEntries returns from the boundary onward (inclusive)
+    expect(active.some(e => e.subtype === 'compact_boundary')).toBe(true)
+    expect(active.some(e => e.message.content === 'after boundary')).toBe(true)
+    expect(active.some(e => e.message.content === 'before boundary')).toBe(false)
+  })
+
+  it('restore() should set lastUuid so next append chains correctly', async () => {
+    const store = new MemorySessionStore('m3')
+    const e1 = await store.appendUser('existing')
+    // Create a new store instance simulating a fresh load from same data
+    const store2 = new MemorySessionStore('m3')
+    await store2.appendRaw(e1)
+    await store2.restore()
+    const e2 = await store2.appendUser('new')
+    expect(e2.parentUuid).toBe(e1.uuid)
+  })
+
+  it('appendAssistant() should attach custom metadata when provided', async () => {
+    const store = new MemorySessionStore('m4')
+    await store.appendAssistant('reply', 'claude-code', { kind: 'heartbeat' })
+    const all = await store.readAll()
+    expect(all[0].metadata).toEqual({ kind: 'heartbeat' })
+  })
+})
+
+// ==================== SessionStore (filesystem) ====================
+
+describe('SessionStore', () => {
+  let tmpDir: string
+
+  // HACK: SessionStore uses SESSIONS_DIR = join(process.cwd(), 'data', 'sessions') which is
+  // a module-level constant, so we can't redirect it. We test using the default path
+  // by cleaning up after ourselves instead.
+  // To keep tests isolated we use a custom sessionId that won't clash.
+
+  const testId = `test-session-${Date.now()}`
+
+  afterEach(async () => {
+    // Clean up session file written during test
+    const { join: pathJoin } = await import('node:path')
+    const { rm: fsRm } = await import('node:fs/promises')
+    try {
+      await fsRm(pathJoin(process.cwd(), 'data', 'sessions', `${testId}.jsonl`), { force: true })
+    } catch { /* ignore */ }
+  })
+
+  it('exists() returns false for a new session', async () => {
+    const store = new SessionStore(testId)
+    expect(await store.exists()).toBe(false)
+  })
+
+  it('appendUser() creates file and can be read back', async () => {
+    const store = new SessionStore(testId)
+    await store.appendUser('hello from disk')
+    expect(await store.exists()).toBe(true)
+    const all = await store.readAll()
+    expect(all).toHaveLength(1)
+    expect(all[0].message.content).toBe('hello from disk')
+    expect(all[0].sessionId).toBe(testId)
+  })
+
+  it('multiple appends chain UUIDs correctly', async () => {
+    const store = new SessionStore(testId)
+    const e1 = await store.appendUser('first')
+    const e2 = await store.appendAssistant('second')
+    expect(e1.parentUuid).toBeNull()
+    expect(e2.parentUuid).toBe(e1.uuid)
+  })
+
+  it('restore() reads lastUuid from file so next append chains correctly', async () => {
+    const store = new SessionStore(testId)
+    const e1 = await store.appendUser('original')
+    // New store instance (simulates process restart)
+    const store2 = new SessionStore(testId)
+    await store2.restore()
+    const e2 = await store2.appendUser('after restore')
+    expect(e2.parentUuid).toBe(e1.uuid)
+  })
+
+  it('readAll() returns [] for non-existent session (ENOENT)', async () => {
+    const store = new SessionStore('definitely-does-not-exist-' + Date.now())
+    expect(await store.readAll()).toEqual([])
   })
 })
