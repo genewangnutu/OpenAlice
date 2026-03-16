@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "dev:ui": "pnpm --filter open-alice-ui dev",
-    "predev": "pnpm --filter opentypebb build",
-    "build": "pnpm --filter opentypebb build && pnpm build:ui && pnpm build:backend",
+    "predev": "pnpm --filter opentypebb build && pnpm --filter @traderalice/ibkr build",
+    "build": "pnpm --filter opentypebb build && pnpm --filter @traderalice/ibkr build && pnpm build:ui && pnpm build:backend",
     "build:ui": "pnpm --filter open-alice-ui build",
     "build:backend": "tsup src/main.ts --format esm --dts",
     "start": "node dist/main.js",
