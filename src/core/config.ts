@@ -42,6 +42,8 @@ const apiKeysSchema = z.object({
 })
 
 const baseProfileFields = {
+  /** Preset ID this profile was created from (for constraint enforcement on edit). */
+  preset: z.string().optional(),
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
 }
@@ -586,6 +588,7 @@ export async function readConnectorsConfig() {
 export interface ResolvedProfile {
   backend: AIBackend
   model: string
+  preset?: string
   apiKey?: string
   baseUrl?: string
   loginMethod?: string

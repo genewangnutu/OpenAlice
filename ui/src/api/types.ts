@@ -5,6 +5,7 @@ export type AIBackend = 'agent-sdk' | 'codex' | 'vercel-ai-sdk'
 export interface Profile {
   backend: AIBackend
   model: string
+  preset?: string     // preset ID this profile was created from
   loginMethod?: string
   provider?: string   // vercel-ai-sdk only
   baseUrl?: string
