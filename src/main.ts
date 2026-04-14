@@ -16,6 +16,7 @@ import { createBrainTools } from './tool/brain.js'
 import type { BrainExportState } from './domain/brain/index.js'
 import { createBrowserTools } from './tool/browser.js'
 import { SymbolIndex } from './domain/market-data/equity/index.js'
+import { CommodityCatalog } from './domain/market-data/commodity/index.js'
 import { createEquityTools } from './tool/equity.js'
 import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCurrencyClient, SDKEtfClient, SDKIndexClient, SDKDerivativesClient, SDKCommodityClient } from './domain/market-data/client/typebb/index.js'
 import type { EquityClientLike, CryptoClientLike, CurrencyClientLike, EtfClientLike, IndexClientLike, DerivativesClientLike, CommodityClientLike } from './domain/market-data/client/types.js'
@@ -197,6 +198,9 @@ async function main() {
   const symbolIndex = new SymbolIndex()
   await symbolIndex.load(equityClient)
 
+  const commodityCatalog = new CommodityCatalog()
+  commodityCatalog.load()
+
   // ==================== Tool Registration ====================
 
   toolCenter.register(createThinkingTools(), 'thinking')
@@ -210,7 +214,7 @@ async function main() {
   toolCenter.register(createBrainTools(brain), 'brain')
   toolCenter.register(createBrowserTools(), 'browser')
   toolCenter.register(createCronTools(cronEngine), 'cron')
-  toolCenter.register(createMarketSearchTools(symbolIndex, cryptoClient, currencyClient), 'market-search')
+  toolCenter.register(createMarketSearchTools(symbolIndex, cryptoClient, currencyClient, commodityCatalog), 'market-search')
   toolCenter.register(createEquityTools(equityClient), 'equity')
   if (config.news.enabled) {
     toolCenter.register(createNewsArchiveTools(newsStore), 'news')
