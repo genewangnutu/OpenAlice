@@ -93,7 +93,7 @@ export function createCronListener(opts: CronListenerOpts): CronListener {
           jobName: payload.jobName,
           reply: result.text,
           durationMs: Date.now() - startMs,
-        })
+        }, { causedBy: entry.seq })
       } catch (err) {
         console.error(`cron-listener: error processing job ${payload.jobId}:`, err)
 
@@ -103,7 +103,7 @@ export function createCronListener(opts: CronListenerOpts): CronListener {
           jobName: payload.jobName,
           error: err instanceof Error ? err.message : String(err),
           durationMs: Date.now() - startMs,
-        })
+        }, { causedBy: entry.seq })
       } finally {
         processing = false
       }

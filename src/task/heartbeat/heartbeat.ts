@@ -131,7 +131,7 @@ export function createHeartbeat(opts: HeartbeatOpts): Heartbeat {
       // 1. Active hours guard
       if (!isWithinActiveHours(config.activeHours, now())) {
         console.log('heartbeat: skipped (outside active hours)')
-        await eventLog.append('heartbeat.skip', { reason: 'outside-active-hours' })
+        await eventLog.append('heartbeat.skip', { reason: 'outside-active-hours' }, { causedBy: entry.seq })
         return
       }
 
@@ -149,7 +149,7 @@ export function createHeartbeat(opts: HeartbeatOpts): Heartbeat {
         await eventLog.append('heartbeat.skip', {
           reason: 'ack',
           parsedReason: parsed.reason,
-        })
+        }, { causedBy: entry.seq })
         return
       }
 
@@ -157,14 +157,14 @@ export function createHeartbeat(opts: HeartbeatOpts): Heartbeat {
       const text = parsed.content || result.text
       if (!text.trim()) {
         console.log(`heartbeat: skipped (empty content) (${durationMs}ms)`)
-        await eventLog.append('heartbeat.skip', { reason: 'empty' })
+        await eventLog.append('heartbeat.skip', { reason: 'empty' }, { causedBy: entry.seq })
         return
       }
 
       // 4. Dedup
       if (dedup.isDuplicate(text, now())) {
         console.log(`heartbeat: skipped (duplicate) (${durationMs}ms)`)
-        await eventLog.append('heartbeat.skip', { reason: 'duplicate' })
+        await eventLog.append('heartbeat.skip', { reason: 'duplicate' }, { causedBy: entry.seq })
         return
       }
 
@@ -189,13 +189,13 @@ export function createHeartbeat(opts: HeartbeatOpts): Heartbeat {
         reason: parsed.reason,
         durationMs,
         delivered,
-      })
+      }, { causedBy: entry.seq })
     } catch (err) {
       console.error('heartbeat: error:', err)
       await eventLog.append('heartbeat.error', {
         error: err instanceof Error ? err.message : String(err),
         durationMs: now() - startMs,
-      })
+      }, { causedBy: entry.seq })
     } finally {
       processing = false
     }
