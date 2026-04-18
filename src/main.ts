@@ -40,9 +40,11 @@ import { CodexProvider } from './ai-providers/codex/index.js'
 import { createEventLog } from './core/event-log.js'
 import { createToolCallLog } from './core/tool-call-log.js'
 import { createListenerRegistry } from './core/listener-registry.js'
+import { createEventBus } from './core/event-bus.js'
 import { createCronEngine, createCronListener, createCronTools } from './task/cron/index.js'
 import { createHeartbeat } from './task/heartbeat/index.js'
 import { createTriggerListener } from './task/trigger/index.js'
+import { createMetricsListener } from './task/metrics/index.js'
 import { NewsCollectorStore, NewsCollector } from './domain/news/index.js'
 import { createNewsArchiveTools } from './tool/news.js'
 
@@ -294,6 +296,11 @@ async function main() {
   })
   await triggerListener.start()
 
+  // ==================== Event Metrics (wildcard observer) ====================
+
+  const metricsListener = createMetricsListener({ registry: listenerRegistry })
+  await metricsListener.start()
+
   // ==================== Activate Listeners + Start Cron Engine ====================
 
   await listenerRegistry.start()
@@ -430,6 +437,7 @@ async function main() {
   const ctx: EngineContext = {
     config, connectorCenter, agentCenter, eventLog, toolCallLog, heartbeat, cronEngine, toolCenter,
     listenerRegistry,
+    fire: createEventBus(eventLog),
     bbEngine: getSDKExecutor(),
     accountManager, fxService, snapshotService,
     newsProvider: newsStore,
@@ -452,6 +460,7 @@ async function main() {
     snapshotScheduler.stop()
     heartbeat.stop()
     triggerListener.stop()
+    metricsListener.stop()
     cronListener.stop()
     cronEngine.stop()
     await listenerRegistry.stop()

@@ -38,6 +38,9 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
   const externalSet = new Set(
     topology.eventTypes.filter((e) => e.external).map((e) => e.name),
   )
+  const descriptionByType = new Map(
+    topology.eventTypes.map((e) => [e.name, e.description ?? '']),
+  )
   const inputs = typeNames.filter((t) => subscribedTo.has(t))
   const outputs = typeNames.filter((t) => emitted.has(t) && !subscribedTo.has(t))
 
@@ -46,12 +49,19 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
     return externalSet.has(type) ? `${base} flow-event-external` : base
   }
 
+  function eventLabel(type: string) {
+    const desc = descriptionByType.get(type)
+    return (
+      <span title={desc || type}>{type}</span>
+    )
+  }
+
   // Input event nodes (left column)
   inputs.forEach((type, i) => {
     nodes.push({
       id: `event:${type}`,
       type: 'default',
-      data: { label: type },
+      data: { label: eventLabel(type) },
       position: { x: COL_X.inputs, y: 20 + i * ROW_HEIGHT },
       className: eventNodeClassName(type),
       sourcePosition: 'right' as any,
@@ -61,12 +71,15 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
 
   // Listener nodes (middle column)
   topology.listeners.forEach((l, i) => {
+    const classes = ['flow-listener-node']
+    if (l.subscribesWildcard) classes.push('flow-listener-sub-wildcard')
+    if (l.emitsWildcard) classes.push('flow-listener-emit-wildcard')
     nodes.push({
       id: `listener:${l.name}`,
       type: 'default',
       data: { label: l.name },
       position: { x: COL_X.listeners, y: 20 + i * ROW_HEIGHT },
-      className: 'flow-listener-node',
+      className: classes.join(' '),
       sourcePosition: 'right' as any,
       targetPosition: 'left' as any,
     })
@@ -77,7 +90,7 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
     nodes.push({
       id: `event:${type}`,
       type: 'default',
-      data: { label: type },
+      data: { label: eventLabel(type) },
       position: { x: COL_X.outputs, y: 20 + i * ROW_HEIGHT },
       className: eventNodeClassName(type),
       sourcePosition: 'right' as any,
@@ -85,8 +98,9 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
     })
   })
 
-  // Subscribe edges: eventType → listener (one per subscribed type)
+  // Subscribe edges: eventType → listener (skipped for wildcard subscribers — aura instead)
   for (const l of topology.listeners) {
+    if (l.subscribesWildcard) continue
     for (const s of l.subscribes) {
       edges.push({
         id: `sub:${s}->${l.name}`,
@@ -98,8 +112,9 @@ function buildGraph(topology: TopologyResponse): { nodes: Node[]; edges: Edge[] 
     }
   }
 
-  // Emit edges: listener → eventType
+  // Emit edges: listener → eventType (skipped for wildcard emitters — aura instead)
   for (const l of topology.listeners) {
+    if (l.emitsWildcard) continue
     for (const e of l.emits) {
       edges.push({
         id: `emit:${l.name}->${e}`,
@@ -192,7 +207,8 @@ export function AutomationFlowSection() {
         <p className="text-[13px] text-text-muted leading-relaxed">
           Alice's async lifecycle as a graph. Left column: event types Alice listens to. Middle: registered
           listeners. Right: event types they emit. Solid blue arrows are subscriptions, dashed green arrows are
-          emissions. Nodes pulse in real time when events flow through the system.
+          emissions. A glowing halo on a listener means it accepts (left) or produces (right) any registered
+          event type. Nodes pulse in real time when events flow through the system.
         </p>
       </div>
 

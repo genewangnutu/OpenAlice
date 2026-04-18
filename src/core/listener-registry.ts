@@ -31,6 +31,10 @@ export interface ListenerInfo {
   name: string
   subscribes: ReadonlyArray<string>
   emits: ReadonlyArray<string>
+  /** True if subscribes was declared as the wildcard '*' (UI can render an aura instead of N edges). */
+  subscribesWildcard: boolean
+  /** True if emits was declared as the wildcard '*'. */
+  emitsWildcard: boolean
 }
 
 export interface ListenerRegistry {
@@ -211,6 +215,8 @@ export function createListenerRegistry(eventLog: EventLog): ListenerRegistry {
       name: l.name,
       subscribes: [...normalizeToArray(l.subscribes)],
       emits: [...normalizeToArray(l.emits)],
+      subscribesWildcard: l.subscribes === '*',
+      emitsWildcard: l.emits === '*',
     }))
   }
 

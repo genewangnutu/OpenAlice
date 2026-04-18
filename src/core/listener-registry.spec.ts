@@ -43,7 +43,28 @@ describe('ListenerRegistry', () => {
 
       const infos = registry.list()
       expect(infos).toHaveLength(1)
-      expect(infos[0]).toEqual({ name: 'test', subscribes: ['cron.fire'], emits: [] })
+      expect(infos[0]).toEqual({
+        name: 'test',
+        subscribes: ['cron.fire'],
+        emits: [],
+        subscribesWildcard: false,
+        emitsWildcard: false,
+      })
+    })
+
+    it('should flag wildcard listeners in list()', () => {
+      registry.register({
+        name: 'audit',
+        subscribes: '*',
+        emits: '*',
+        async handle() { /* no-op */ },
+      })
+      const info = registry.list().find((l) => l.name === 'audit')!
+      expect(info.subscribesWildcard).toBe(true)
+      expect(info.emitsWildcard).toBe(true)
+      // Wildcard expands to all registered event types
+      expect(info.subscribes.length).toBeGreaterThan(5)
+      expect(info.emits.length).toBeGreaterThan(5)
     })
 
     it('should throw on duplicate name', () => {

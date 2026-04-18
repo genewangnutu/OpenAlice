@@ -129,12 +129,17 @@ export interface ConnectorsConfig {
 export interface TopologyEventType {
   name: string
   external: boolean
+  description?: string
 }
 
 export interface TopologyListener {
   name: string
   subscribes: string[]
   emits: string[]
+  /** True if declared as wildcard '*' — UI renders an aura instead of N edges. */
+  subscribesWildcard: boolean
+  /** Same for emits. */
+  emitsWildcard: boolean
 }
 
 export interface TopologyResponse {

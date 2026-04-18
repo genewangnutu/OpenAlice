@@ -1,14 +1,17 @@
 /**
  * Agent Event Type System — typed event registry with runtime validation.
  *
- * Defines `AgentEventMap` (type → payload mapping) and TypeBox schemas
- * for runtime validation of event payloads. Used by EventLog to enforce
- * type safety on `append()` and `subscribeType()`.
+ * `AgentEvents` is the single source of truth: each event type maps to a
+ * metadata record holding its TypeBox schema, whether it's externally
+ * ingestable, and an optional human-readable description.
+ *
+ * `AgentEventSchemas` and `isExternalEventType` are derived views exposed
+ * for ergonomics and backward compatibility.
  *
  * Adding a new event type:
  *   1. Define its payload interface
  *   2. Add it to `AgentEventMap`
- *   3. Add its TypeBox schema to `AgentEventSchemas`
+ *   3. Add an entry to `AgentEvents` with schema + (optional) external/description
  */
 
 import { Type, type TSchema } from '@sinclair/typebox'
@@ -177,34 +180,84 @@ const TriggerErrorSchema = Type.Object({
   durationMs: Type.Number(),
 })
 
-/**
- * External event allowlist — event types that may be ingested from outside
- * the process via HTTP (e.g., POST /api/events/ingest). Types NOT in this
- * set are internal — they can only be produced by in-process code. This
- * prevents external actors from forging internal state transitions like
- * `cron.done` or `heartbeat.done`.
- */
-export const EXTERNAL_EVENT_TYPES: ReadonlySet<keyof AgentEventMap> = new Set([
-  'trigger',
-])
+// ==================== AgentEvents — metadata registry ====================
 
-export function isExternalEventType(type: string): boolean {
-  return EXTERNAL_EVENT_TYPES.has(type as keyof AgentEventMap)
+export interface AgentEventMeta {
+  /** TypeBox schema for runtime payload validation. */
+  schema: TSchema
+  /** If true, this event type may be ingested from outside the process
+   *  (HTTP webhook, external API). Internal-only types cannot be
+   *  forged by external callers. Default: false. */
+  external?: boolean
+  /** Optional human-readable description — surfaced in topology UI tooltips. */
+  description?: string
 }
 
-/** Schema registry — same keys as AgentEventMap. */
-export const AgentEventSchemas: { [K in keyof AgentEventMap]: TSchema } = {
-  'cron.fire': CronFireSchema,
-  'cron.done': CronDoneSchema,
-  'cron.error': CronErrorSchema,
-  'heartbeat.done': HeartbeatDoneSchema,
-  'heartbeat.skip': HeartbeatSkipSchema,
-  'heartbeat.error': HeartbeatErrorSchema,
-  'message.received': MessageReceivedSchema,
-  'message.sent': MessageSentSchema,
-  'trigger': TriggerSchema,
-  'trigger.done': TriggerDoneSchema,
-  'trigger.error': TriggerErrorSchema,
+/** Single source of truth — metadata for every registered event type. */
+export const AgentEvents: { [K in keyof AgentEventMap]: AgentEventMeta } = {
+  'cron.fire': {
+    schema: CronFireSchema,
+    description: 'Cron scheduler timer fired for a registered job.',
+  },
+  'cron.done': {
+    schema: CronDoneSchema,
+    description: 'Cron job was routed through the AI and completed successfully.',
+  },
+  'cron.error': {
+    schema: CronErrorSchema,
+    description: 'Cron job routing through the AI failed.',
+  },
+  'heartbeat.done': {
+    schema: HeartbeatDoneSchema,
+    description: 'Heartbeat produced content and (attempted to) deliver a notification.',
+  },
+  'heartbeat.skip': {
+    schema: HeartbeatSkipSchema,
+    description: 'Heartbeat fired but no notification was sent (HEARTBEAT_OK, duplicate, outside active hours, or empty).',
+  },
+  'heartbeat.error': {
+    schema: HeartbeatErrorSchema,
+    description: 'Heartbeat invocation errored.',
+  },
+  'message.received': {
+    schema: MessageReceivedSchema,
+    description: 'A user message arrived on a connector (Web chat, Telegram, etc.).',
+  },
+  'message.sent': {
+    schema: MessageSentSchema,
+    description: 'An assistant reply was dispatched on a connector.',
+  },
+  'trigger': {
+    schema: TriggerSchema,
+    external: true,
+    description: 'Generic external stimulus (webhook, API ingest). Routed to the AI by trigger-router when no specific type applies.',
+  },
+  'trigger.done': {
+    schema: TriggerDoneSchema,
+    description: 'A trigger event was handled successfully.',
+  },
+  'trigger.error': {
+    schema: TriggerErrorSchema,
+    description: 'Handling a trigger event failed.',
+  },
+}
+
+// ==================== Derived views ====================
+
+/** Schemas-only map — derived for Ajv compilation and existing consumers. */
+export const AgentEventSchemas: { [K in keyof AgentEventMap]: TSchema } =
+  Object.fromEntries(
+    (Object.keys(AgentEvents) as Array<keyof AgentEventMap>).map(
+      (k) => [k, AgentEvents[k].schema],
+    ),
+  ) as { [K in keyof AgentEventMap]: TSchema }
+
+/** Whether this event type may be ingested from outside the process. */
+export function isExternalEventType(type: string): boolean {
+  return (
+    type in AgentEvents &&
+    AgentEvents[type as keyof AgentEventMap].external === true
+  )
 }
 
 // ==================== Runtime Validation ====================
@@ -216,8 +269,8 @@ const ajv = new (AjvPkg as unknown as new (opts?: object) => import('ajv').defau
 })
 
 const validators = new Map<string, ReturnType<typeof ajv.compile>>()
-for (const [type, schema] of Object.entries(AgentEventSchemas)) {
-  validators.set(type, ajv.compile(schema))
+for (const [type, meta] of Object.entries(AgentEvents)) {
+  validators.set(type, ajv.compile(meta.schema))
 }
 
 /**
