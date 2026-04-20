@@ -24,6 +24,8 @@ import { createToolsRoutes } from './routes/tools.js'
 import { createAgentStatusRoutes } from './routes/agent-status.js'
 import { createPersonaRoutes } from './routes/persona.js'
 import { createNewsRoutes } from './routes/news.js'
+import { mountOpenTypeBB } from '../../server/opentypebb.js'
+import { buildSDKCredentials } from '../../domain/market-data/credential-map.js'
 
 export interface WebConfig {
   port: number
@@ -111,6 +113,14 @@ export class WebPlugin implements Plugin {
     app.route('/api/agent-status', createAgentStatusRoutes(ctx))
     app.route('/api/news', createNewsRoutes(ctx))
     app.route('/api/persona', createPersonaRoutes())
+
+    // ==================== Mount opentypebb (market data HTTP) ====================
+    // opentypebb is Alice's first-class market-data package; its router is
+    // merged into this app so UI and external consumers hit a single port.
+    mountOpenTypeBB(app, ctx.bbEngine, {
+      basePath: '/api/market-data-v1',
+      defaultCredentials: buildSDKCredentials(ctx.config.marketData.providerKeys),
+    })
 
     // ==================== Serve UI (Vite build output) ====================
     const uiRoot = resolve('dist/ui')

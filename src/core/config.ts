@@ -181,10 +181,6 @@ const marketDataSchema = z.object({
     biztoc: z.string().optional(),
   }).default({}),
   backend: z.enum(['typebb-sdk', 'openbb-api']).default('typebb-sdk'),
-  apiServer: z.object({
-    enabled: z.boolean().default(true),
-    port: z.number().int().min(1024).max(65535).default(6901),
-  }).default({ enabled: true, port: 6901 }),
 })
 
 const compactionSchema = z.object({

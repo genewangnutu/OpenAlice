@@ -25,7 +25,6 @@ import { OpenBBEquityClient } from './domain/market-data/client/openbb-api/equit
 import { OpenBBCryptoClient } from './domain/market-data/client/openbb-api/crypto-client.js'
 import { OpenBBCurrencyClient } from './domain/market-data/client/openbb-api/currency-client.js'
 import { OpenBBCommodityClient } from './domain/market-data/client/openbb-api/commodity-client.js'
-import { OpenBBServerPlugin } from './server/opentypebb.js'
 import { createMarketSearchTools } from './tool/market.js'
 import { createAnalysisTools } from './tool/analysis.js'
 import { createSessionTools } from './tool/session.js'
@@ -201,8 +200,6 @@ async function main() {
     derivativesClient = new SDKDerivativesClient(executor, 'derivatives', providers.equity, credentials, routeMap)
   }
 
-  // OpenBB API server is started later via optionalPlugins
-
   // ==================== FX Service ====================
 
   const fxService = new FxService(currencyClient)
@@ -354,10 +351,6 @@ async function main() {
     }))
   }
 
-  if (config.marketData.apiServer.enabled) {
-    optionalPlugins.set('openbb-server', new OpenBBServerPlugin({ port: config.marketData.apiServer.port }))
-  }
-
   // ==================== Connector Reconnect ====================
 
   let connectorsReconnecting = false
@@ -397,30 +390,6 @@ async function main() {
         await p.start(ctx)
         optionalPlugins.set('telegram', p)
         changes.push('telegram started')
-      }
-
-      // --- OpenBB API Server ---
-      const openbbWanted = fresh.marketData.apiServer.enabled
-      const openbbRunning = optionalPlugins.has('openbb-server')
-      if (openbbRunning && !openbbWanted) {
-        await optionalPlugins.get('openbb-server')!.stop()
-        optionalPlugins.delete('openbb-server')
-        changes.push('openbb-server stopped')
-      } else if (!openbbRunning && openbbWanted) {
-        const p = new OpenBBServerPlugin({ port: fresh.marketData.apiServer.port })
-        await p.start(ctx)
-        optionalPlugins.set('openbb-server', p)
-        changes.push('openbb-server started')
-      } else if (openbbRunning && openbbWanted) {
-        const current = optionalPlugins.get('openbb-server') as OpenBBServerPlugin
-        if (current.port !== fresh.marketData.apiServer.port) {
-          await current.stop()
-          optionalPlugins.delete('openbb-server')
-          const p = new OpenBBServerPlugin({ port: fresh.marketData.apiServer.port })
-          await p.start(ctx)
-          optionalPlugins.set('openbb-server', p)
-          changes.push(`openbb-server restarted on port ${fresh.marketData.apiServer.port}`)
-        }
       }
 
       if (changes.length > 0) {
