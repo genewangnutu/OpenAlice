@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { MarkdownContent } from '../components/MarkdownContent'
 import { inboxLive } from '../live/inbox'
-import { useInboxRead } from '../live/inbox-read'
 import { useInboxSelection } from '../live/inbox-selection'
 import { readWorkspaceFile, type ReadFileResult } from '../components/workspace/api'
 import type { InboxEntry, InboxDoc } from '../api/inbox'
 
 interface InboxPageProps {
+  /** Required by the tab registry shape; not used here — read state is
+   *  per-entry and driven by selection, not by page visibility. */
   visible: boolean
 }
 
@@ -17,17 +18,13 @@ interface InboxPageProps {
  * order, mirroring Linear's issue-body + activity layout.
  *
  * Selection is owned by `useInboxSelection`; the sidebar drives it.
+ * Read-state mutation happens in the sidebar at selection time — this
+ * pane just renders whatever is selected.
  */
-export function InboxPage({ visible }: InboxPageProps) {
+export function InboxPage(_props: InboxPageProps) {
   const entries = inboxLive.useStore((s) => s.entries)
   const loading = inboxLive.useStore((s) => s.loading)
   const selectedId = useInboxSelection((s) => s.selectedEntryId)
-  const markAllRead = useInboxRead((s) => s.markAllRead)
-  const lastSeen = useInboxRead((s) => s.lastSeenTs)
-
-  useEffect(() => {
-    if (visible && entries.length > 0) markAllRead()
-  }, [visible, entries.length, markAllRead])
 
   const selected = entries.find((e) => e.id === selectedId) ?? null
 
@@ -47,7 +44,7 @@ export function InboxPage({ visible }: InboxPageProps) {
             Select an entry from the sidebar.
           </div>
         ) : (
-          <Detail entry={selected} unread={selected.ts > lastSeen} />
+          <Detail entry={selected} />
         )}
       </div>
     </div>
@@ -69,22 +66,20 @@ function EmptyState() {
   )
 }
 
-function Detail({ entry, unread }: { entry: InboxEntry; unread: boolean }) {
+function Detail({ entry }: { entry: InboxEntry }) {
   const hasDocs = (entry.docs?.length ?? 0) > 0
   const hasComments = (entry.comments ?? '').trim().length > 0
 
   return (
     <div className="max-w-[820px] mx-auto py-6 px-4 md:px-8">
-      {/* Header: workspace · timestamp */}
+      {/* Header: workspace · timestamp. No "New" chip — selection always
+       *  marks read, so by the time the detail pane renders the entry is
+       *  read by definition; the chip would only ever flash for one
+       *  render. The sidebar dot is the canonical unread signal. */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <span className="text-[14px] font-medium text-text">
           {entry.workspaceLabel ?? entry.workspaceId}
         </span>
-        {unread && (
-          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-accent/15 text-accent">
-            New
-          </span>
-        )}
         <span className="text-[11px] text-text-muted/70 tabular-nums ml-auto">
           {formatAbsolute(entry.ts)}
           <span className="mx-1.5 text-text-muted/40">·</span>

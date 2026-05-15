@@ -14,13 +14,26 @@ import type { InboxEntry } from '../api/inbox'
  *
  * Selection state lives in `useInboxSelection` so it survives sidebar
  * remounts and is read by the detail page in the editor area.
+ *
+ * Read semantics: **selection marks read**. Every place that mutates
+ * `useInboxSelection` (click / j/k / default-select) also calls
+ * `markRead(id)` — touching an entry is the canonical signal that
+ * you've seen it. Bulk-on-visibility is deliberately avoided (see
+ * inbox-read.ts doc for the rationale).
  */
 export function InboxSidebar() {
   const entries = inboxLive.useStore((s) => s.entries)
   const loading = inboxLive.useStore((s) => s.loading)
   const selectedId = useInboxSelection((s) => s.selectedEntryId)
   const select = useInboxSelection((s) => s.select)
-  const lastSeen = useInboxRead((s) => s.lastSeenTs)
+  const readIds = useInboxRead((s) => s.readIds)
+  const markRead = useInboxRead((s) => s.markRead)
+
+  /** select + mark read in one. Used by every selection mutation site. */
+  const selectAndRead = (id: string) => {
+    select(id)
+    markRead(id)
+  }
 
   // Default-select latest on first non-empty load. Latch on selectedId
   // existing — once the user touches anything, never override.
@@ -29,10 +42,11 @@ export function InboxSidebar() {
     if (everSelectedRef.current) return
     if (entries.length === 0) return
     if (!selectedId) {
-      select(entries[0].id)
+      selectAndRead(entries[0].id)
     }
     everSelectedRef.current = true
-  }, [entries, selectedId, select])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, selectedId])
 
   // Keyboard nav — j/k move within the flat newest-first sequence.
   useEffect(() => {
@@ -43,11 +57,12 @@ export function InboxSidebar() {
       if (entries.length === 0) return
       const idx = entries.findIndex((x) => x.id === selectedId)
       const next = e.key === 'j' ? Math.min(entries.length - 1, idx + 1) : Math.max(0, idx - 1)
-      if (next !== idx && entries[next]) select(entries[next].id)
+      if (next !== idx && entries[next]) selectAndRead(entries[next].id)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [entries, selectedId, select])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, selectedId])
 
   const groups = useMemo(() => groupByBucket(entries), [entries])
 
@@ -79,8 +94,8 @@ export function InboxSidebar() {
                 key={entry.id}
                 entry={entry}
                 active={entry.id === selectedId}
-                unread={entry.ts > lastSeen}
-                onClick={() => select(entry.id)}
+                unread={!readIds[entry.id]}
+                onClick={() => selectAndRead(entry.id)}
               />
             ))}
           </div>
