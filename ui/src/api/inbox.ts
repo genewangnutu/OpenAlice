@@ -46,4 +46,15 @@ export const inboxApi = {
       body: JSON.stringify(body),
     })
   },
+
+  /** Hard-delete an inbox entry. Returns true on success, false if
+   *  the entry didn't exist (server replied 404). */
+  async delete(id: string): Promise<boolean> {
+    const res = await fetch(`/api/inbox/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+    if (res.status === 204) return true
+    if (res.status === 404) return false
+    throw new Error(`inbox delete failed: ${res.status}`)
+  },
 }

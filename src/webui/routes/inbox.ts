@@ -77,5 +77,16 @@ export function createInboxRoutes(deps: InboxRoutesDeps) {
     }
   })
 
+  /** Hard-delete an inbox entry. 204 on success, 404 when no entry
+   *  matches. Matches the "archive" affordance in the inbox UI, but
+   *  the semantics are full removal — we don't have an "underlying
+   *  issue" the way Linear does, so the entry IS the artifact. */
+  app.delete('/:id', async (c) => {
+    const id = c.req.param('id')
+    const removed = await deps.inboxStore.delete(id)
+    if (!removed) return c.json({ error: 'not_found' }, 404)
+    return c.body(null, 204)
+  })
+
   return app
 }

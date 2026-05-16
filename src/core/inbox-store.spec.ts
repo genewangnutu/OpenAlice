@@ -103,6 +103,30 @@ describe('InboxStore (in-memory)', () => {
     expect(entries.map((e) => e.id)).toEqual([e2.id, e1.id])
   })
 
+  it('delete removes an entry and returns true; missing id returns false', async () => {
+    const a = await store.append({ workspaceId: 'ws-1', comments: 'a' })
+    await store.append({ workspaceId: 'ws-1', comments: 'b' })
+    expect(await store.delete(a.id)).toBe(true)
+    const { entries } = await store.read()
+    expect(entries.map((e) => e.comments)).toEqual(['b'])
+    expect(await store.delete('does-not-exist')).toBe(false)
+    expect(await store.delete(a.id)).toBe(false)
+  })
+
+  it('onRemoved fires on successful delete, dispose stops further notifications', async () => {
+    const seen: string[] = []
+    const dispose = store.onRemoved((id) => seen.push(id))
+    const a = await store.append({ workspaceId: 'ws-1', comments: 'a' })
+    const b = await store.append({ workspaceId: 'ws-1', comments: 'b' })
+    await store.delete(a.id)
+    await store.delete(b.id)
+    expect(seen).toEqual([a.id, b.id])
+    dispose()
+    const c = await store.append({ workspaceId: 'ws-1', comments: 'c' })
+    await store.delete(c.id)
+    expect(seen).toHaveLength(2)
+  })
+
   it('onAppended fires on append, dispose stops further notifications', async () => {
     const seen: InboxEntry[] = []
     const dispose = store.onAppended((e) => seen.push(e))
@@ -145,6 +169,36 @@ describe('InboxStore (JSONL persistence)', () => {
     const { entries, hasMore } = await missing.read()
     expect(entries).toEqual([])
     expect(hasMore).toBe(false)
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('delete rewrites the JSONL atomically; missing entries do not corrupt the file', async () => {
+    const a = await store.append({ workspaceId: 'ws-1', comments: 'a' })
+    const b = await store.append({ workspaceId: 'ws-1', comments: 'b' })
+    const c = await store.append({ workspaceId: 'ws-1', comments: 'c' })
+    expect(await store.delete(b.id)).toBe(true)
+
+    // Re-open from disk — verify only a and c survive, in original order.
+    const fresh = createInboxStore({ filePath: path })
+    const { entries } = await fresh.read()
+    expect(entries.map((e) => e.id)).toEqual([c.id, a.id])
+
+    // Deleting a non-existent id on disk is a no-op (returns false; file
+    // contents unchanged).
+    expect(await store.delete('does-not-exist')).toBe(false)
+    const fresh2 = createInboxStore({ filePath: path })
+    const { entries: again } = await fresh2.read()
+    expect(again.map((e) => e.id)).toEqual([c.id, a.id])
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('delete leaves no tmp file on the side', async () => {
+    const a = await store.append({ workspaceId: 'ws-1', comments: 'a' })
+    await store.delete(a.id)
+    const fs = await import('node:fs/promises')
+    const entries = await fs.readdir(dir)
+    expect(entries).toContain('entries.jsonl')
+    expect(entries).not.toContain('entries.jsonl.tmp')
     await rm(dir, { recursive: true, force: true })
   })
 })

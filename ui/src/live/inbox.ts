@@ -9,6 +9,11 @@ import { createLiveStore } from './createLiveStore'
  *
  * Single shared connection via LiveStore refcount; multiple subscribers
  * (sidebar list, detail page, Activity bar unread badge) share one timer.
+ *
+ * Two side-channel helpers (`refreshInbox` / `removeInboxOptimistically`)
+ * are exported alongside for the delete flow: optimistic removal flips
+ * the entry out of state immediately so the UI doesn't lag the
+ * DELETE round-trip, then a refresh confirms truth from the server.
  */
 
 export interface InboxState {
@@ -18,6 +23,13 @@ export interface InboxState {
 }
 
 const POLL_INTERVAL_MS = 20_000
+
+/** Module-level setter populated by the subscribe callback so external
+ *  callers can mutate state through the same `apply` channel. Null when
+ *  no subscriber is mounted; calls become no-ops in that window which
+ *  is harmless (delete actions originate from mounted UI). */
+let applyState: ((next: InboxState | ((prev: InboxState) => InboxState)) => void) | null = null
+let triggerRefresh: (() => void) | null = null
 
 export const inboxLive = createLiveStore<InboxState>({
   name: 'inbox',
@@ -36,12 +48,34 @@ export const inboxLive = createLiveStore<InboxState>({
       }
     }
 
+    applyState = apply
+    triggerRefresh = refresh
+
     void refresh()
     const intervalId = setInterval(refresh, POLL_INTERVAL_MS)
 
     return () => {
       disposed = true
       clearInterval(intervalId)
+      applyState = null
+      triggerRefresh = null
     }
   },
 })
+
+/** Force an immediate refresh from /api/inbox/history. Used after
+ *  a DELETE to reconcile state with the server. Safe to call even
+ *  with no subscriber mounted (no-op). */
+export function refreshInbox(): void {
+  triggerRefresh?.()
+}
+
+/** Optimistically remove an entry from the in-memory list before the
+ *  DELETE round-trip completes. Pairs with `refreshInbox()` after the
+ *  request lands so server state is the source of truth either way. */
+export function removeInboxOptimistically(id: string): void {
+  applyState?.((prev) => ({
+    ...prev,
+    entries: prev.entries.filter((e) => e.id !== id),
+  }))
+}

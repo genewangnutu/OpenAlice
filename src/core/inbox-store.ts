@@ -27,7 +27,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { readFile, appendFile, mkdir } from 'node:fs/promises'
+import { readFile, appendFile, mkdir, writeFile, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { EventEmitter } from 'node:events'
 
@@ -63,7 +63,12 @@ export interface InboxReadOpts {
 export interface IInboxStore {
   append(input: InboxInput): Promise<InboxEntry>
   read(opts?: InboxReadOpts): Promise<{ entries: InboxEntry[]; hasMore: boolean }>
+  /** Hard-delete an entry by id. Returns true if removed, false if no
+   *  entry matched. JSONL rewrites are atomic (tmp + rename). */
+  delete(id: string): Promise<boolean>
   onAppended(listener: (entry: InboxEntry) => void): () => void
+  /** Subscribe to live removals. Returns a dispose function. */
+  onRemoved(listener: (id: string) => void): () => void
 }
 
 const INBOX_FILE = join(process.cwd(), 'data', 'inbox', 'entries.jsonl')
@@ -145,6 +150,45 @@ export function createInboxStore(opts: InboxStoreOptions = {}): IInboxStore {
     return { entries, hasMore }
   }
 
+  async function deleteEntry(id: string): Promise<boolean> {
+    let raw: string
+    try {
+      raw = await readFile(filePath, 'utf-8')
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false
+      }
+      throw err
+    }
+    const lines = raw.split('\n').filter((l) => l.trim())
+    let removed = false
+    const kept: string[] = []
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as InboxEntry
+        if (entry.id === id) {
+          removed = true
+          continue
+        }
+        kept.push(line)
+      } catch {
+        // Preserve unparseable lines so a malformed entry can't be used to
+        // accidentally wipe the file via delete().
+        kept.push(line)
+      }
+    }
+    if (!removed) return false
+
+    // Atomic rewrite — tmp + rename. Crash mid-write leaves the previous
+    // file intact instead of producing a half-truncated JSONL.
+    const tmp = `${filePath}.tmp`
+    const body = kept.length > 0 ? kept.join('\n') + '\n' : ''
+    await writeFile(tmp, body, 'utf-8')
+    await rename(tmp, filePath)
+    emitter.emit('removed', id)
+    return true
+  }
+
   function onAppended(listener: (entry: InboxEntry) => void): () => void {
     emitter.on('appended', listener)
     return () => {
@@ -152,7 +196,14 @@ export function createInboxStore(opts: InboxStoreOptions = {}): IInboxStore {
     }
   }
 
-  return { append, read, onAppended }
+  function onRemoved(listener: (id: string) => void): () => void {
+    emitter.on('removed', listener)
+    return () => {
+      emitter.off('removed', listener)
+    }
+  }
+
+  return { append, read, delete: deleteEntry, onAppended, onRemoved }
 }
 
 // ==================== In-memory store (tests) ====================
@@ -185,6 +236,14 @@ export function createMemoryInboxStore(): IInboxStore {
     return { entries: [...window].reverse(), hasMore: window.length < scoped.length }
   }
 
+  async function deleteEntry(id: string): Promise<boolean> {
+    const idx = entries.findIndex((e) => e.id === id)
+    if (idx < 0) return false
+    entries.splice(idx, 1)
+    emitter.emit('removed', id)
+    return true
+  }
+
   function onAppended(listener: (entry: InboxEntry) => void): () => void {
     emitter.on('appended', listener)
     return () => {
@@ -192,5 +251,12 @@ export function createMemoryInboxStore(): IInboxStore {
     }
   }
 
-  return { append, read, onAppended }
+  function onRemoved(listener: (id: string) => void): () => void {
+    emitter.on('removed', listener)
+    return () => {
+      emitter.off('removed', listener)
+    }
+  }
+
+  return { append, read, delete: deleteEntry, onAppended, onRemoved }
 }

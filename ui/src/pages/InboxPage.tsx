@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, MessageSquare } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ArrowRight, MessageSquare, Trash2 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { MarkdownContent } from '../components/MarkdownContent'
-import { inboxLive } from '../live/inbox'
+import { api } from '../api'
+import { inboxLive, refreshInbox, removeInboxOptimistically } from '../live/inbox'
 import { useInboxSelection } from '../live/inbox-selection'
+import { useInboxRead } from '../live/inbox-read'
 import { useWorkspace } from '../tabs/store'
 import { useWorkspaces } from '../contexts/WorkspacesContext'
 import { readWorkspaceFile, type ReadFileResult } from '../components/workspace/api'
 import type { InboxEntry, InboxDoc } from '../api/inbox'
 
 interface InboxPageProps {
-  /** Required by the tab registry shape; not used here — read state is
-   *  per-entry and driven by selection, not by page visibility. */
+  /** Gates the page-level Delete/Backspace shortcut so background
+   *  inbox tabs don't intercept the keypress. */
   visible: boolean
 }
 
@@ -22,14 +24,68 @@ interface InboxPageProps {
  *
  * Selection is owned by `useInboxSelection`; the sidebar drives it.
  * Read-state mutation happens in the sidebar at selection time — this
- * pane just renders whatever is selected.
+ * pane just renders whatever is selected. Delete is owned here (both
+ * the button in the Detail header and the Delete/Backspace shortcut)
+ * because it needs access to the full entry list to advance selection
+ * to the next entry after removal.
  */
-export function InboxPage(_props: InboxPageProps) {
+export function InboxPage({ visible }: InboxPageProps) {
   const entries = inboxLive.useStore((s) => s.entries)
   const loading = inboxLive.useStore((s) => s.loading)
   const selectedId = useInboxSelection((s) => s.selectedEntryId)
+  const select = useInboxSelection((s) => s.select)
+  const markRead = useInboxRead((s) => s.markRead)
 
   const selected = entries.find((e) => e.id === selectedId) ?? null
+
+  /** Hard-delete an entry. Optimistically removes from local state,
+   *  advances selection to the next-older entry (or previous if last),
+   *  fires the DELETE request, then forces a refresh to reconcile with
+   *  the server. Match Linear's "archive removes from view, focus
+   *  advances" feel — no confirmation dialog. */
+  const handleDelete = useCallback(async (id: string) => {
+    const idx = entries.findIndex((e) => e.id === id)
+    if (idx < 0) return
+
+    // entries is sorted newest-first; "the one after this" is the next
+    // older entry. Fall back to the previous (newer) if we deleted the
+    // tail; null if the list becomes empty.
+    const nextId = entries[idx + 1]?.id ?? entries[idx - 1]?.id ?? null
+
+    removeInboxOptimistically(id)
+    if (nextId) {
+      select(nextId)
+      markRead(nextId)
+    } else {
+      select(null)
+    }
+
+    try {
+      await api.inbox.delete(id)
+    } catch {
+      // best-effort — refreshInbox below will reconcile if the server
+      // disagreed (e.g. concurrent change re-introduced the entry).
+    }
+    refreshInbox()
+  }, [entries, select, markRead])
+
+  // Delete / Backspace shortcut. Gated on `visible` so a background
+  // inbox tab doesn't intercept; gated on `selectedId` so the
+  // keypress only fires when there's something to delete.
+  useEffect(() => {
+    if (!visible) return
+    if (!selectedId) return
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      e.preventDefault()
+      // selectedId is captured by the closure; safe to use.
+      void handleDelete(selectedId!)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [visible, selectedId, handleDelete])
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -47,7 +103,7 @@ export function InboxPage(_props: InboxPageProps) {
             Select an entry from the sidebar.
           </div>
         ) : (
-          <Detail entry={selected} />
+          <Detail entry={selected} onDelete={() => handleDelete(selected.id)} />
         )}
       </div>
     </div>
@@ -69,7 +125,7 @@ function EmptyState() {
   )
 }
 
-function Detail({ entry }: { entry: InboxEntry }) {
+function Detail({ entry, onDelete }: { entry: InboxEntry; onDelete: () => void }) {
   const hasDocs = (entry.docs?.length ?? 0) > 0
   const hasComments = (entry.comments ?? '').trim().length > 0
 
@@ -95,10 +151,13 @@ function Detail({ entry }: { entry: InboxEntry }) {
 
   return (
     <div className="max-w-[820px] mx-auto py-6 px-4 md:px-8">
-      {/* Header: workspace · timestamp. Plain text — the primary navigation
-       *  affordance sits at the bottom of the comments thread (Linear-style
-       *  reply input). Making the label itself a button was too subtle and
-       *  the user didn't expect to click a heading. */}
+      {/* Header: workspace · timestamp · delete. Plain text label —
+       *  the primary navigation affordance sits at the bottom of the
+       *  comments thread (Linear-style reply input). Trash button is
+       *  always visible, muted by default with accent-red on hover —
+       *  Linear's archive affordance equivalent. Hard delete (no undo
+       *  modal); keyboard parity via Delete / Backspace at the page
+       *  level. */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <span
           className={`text-[14px] font-medium ${
@@ -113,6 +172,15 @@ function Detail({ entry }: { entry: InboxEntry }) {
           <span className="mx-1.5 text-text-muted/40">·</span>
           {formatRelative(entry.ts)}
         </span>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="p-1 rounded text-text-muted/50 hover:text-red hover:bg-red/10 transition-colors"
+          title="Delete this entry (Delete / Backspace)"
+          aria-label="Delete this inbox entry"
+        >
+          <Trash2 size={14} strokeWidth={1.75} />
+        </button>
       </div>
 
       {/* Docs — top, live render from workspace */}
